@@ -1,0 +1,219 @@
+-------------------------------------------------------------------------------------------------------------
+title: "Analysis of BABE data"
+author: "Diksha Patil"
+date: "05/11/2022"
+output: html_document
+-------------------------------------------------------------------------------------------------
+# Introduction
+  To study effect estimation with the help of PK Parameters here we are using BABEData and BABEData22.
+  we have data for two by two cross over design. I have stored this data  in clinical trials folder in C drive in CSV format .In these data there are 24 subjects and also Period ,Sequence ,Treatment and Concentration data with time points are also given for all subjects.For total subjects we are calculating PK parameters,Carryover Effect.
+   
+* 
+  Here data extraction is done. Concentration data and time point are seperated to code further easily.
+```{r}
+df1=read.csv("C:\\Users\\FLUTE\\Desktop\\Diksha\\Statistics\\Third Sem\\ST 306\\MCP\\Clinical Trials\\BABEData.csv",header = F)
+data=read.csv("C:\\Users\\FLUTE\\Desktop\\Diksha\\Statistics\\Third Sem\\ST 306\\MCP\\Clinical Trials\\BABEData.csv")
+time_c=df1[1,5:20]
+conc=df1[2:49,5:20]
+```
+
+```{r}
+plot(unlist(time_c),apply(data[data$treat==1,5:20],2,mean),type="l")
+plot(unlist(time_c),apply(data[data$treat==2,5:20],2,mean),type="l")
+
+```
+* Create function for pk parameters 
+```{r}
+pkpara=function(time_temp,conc_temp)
+  {
+  n=length(conc_temp)
+  pkpara=data.frame("Tmax"=0,"Cmax"=0,"AUCt"=0,"AUCinf"=0,"Thalf"=0,"Ke"=0)
+  pkpara$Cmax=max(conc_temp)
+  a=which.max(conc_temp)
+  pkpara$Tmax=time_temp[a]
+  pkpara$AUCt=sum((conc_temp[2:n]+conc_temp[1:(n-1)])*
+                    (time_temp[2:n]-time_temp[1:(n-1)]))/2
+  pkpara$Ke=-2.303*coefficients(lm(log10(conc_temp[(a+1):n])~time_temp[(a+1):n]))[2]
+  pkpara$Thalf=0.693/pkpara$Ke
+  pkpara$AUCinf=pkpara$AUCt+conc_temp[n]/pkpara$Ke
+ return(pkpara)
+  }
+```
+
+
+```{r}
+out=data.frame("Tmax"=rep(0,48),"Cmax"=rep(0,48),"AUCt"=rep(0,48),"AUCinf"=rep(0,48),"Thalf"=rep(0,48),"Ke"=rep(0,48))
+for(i in 1:48){
+  out[i,]=pkpara(as.numeric(unlist(time_c)),as.numeric(unlist(conc[i,])))
+}
+summary(out)
+```
+```{r}
+seq1=sapply(out[data$seq==1,],summary);seq1
+
+```
+```{r}
+seq2=sapply(out[data$seq==2,],summary);seq2
+```
+```{r}
+Treat1=sapply(out[data$treat==1,],summary);Treat1
+```
+```{r}
+Treat2=sapply(out[data$treat==2,],summary);Treat2
+```
+```{r}
+Per1=sapply(out[data$Per==1,],summary);Per1
+```
+```{r}
+Per2=sapply(out[data$Per==2,],summary);Per2
+```
+* Combine the data
+```{r}
+df3=df1[2:49,1:4]
+colnames(df3)=df1[1,1:4]
+df3=cbind(df3,out)
+```
+
+```{r}
+
+eff=function(df,alpha){
+Y11=df[df$Per==1&df$Seq==1,1]; n1=length(Y11)
+Y12=df[df$Per==1&df$Seq==2,1]
+Y21=df[df$Per==2&df$Seq==1,1];n2=length(Y21)
+Y22=df[df$Per==2&df$Seq==2,1]
+
+U1=Y11+Y21; U2=Y12+Y22;
+D1=(Y21-Y11)/2; D2=(Y22-Y12)/2;
+O1=D1;O2=-D2
+sig2u=((n1-1)*var(U1)+(n2-1)*var(U2))/(n1+n2-2)
+sig2d=((n1-1)*var(D1)+(n2-1)*var(D2))/(n1+n2-2)
+
+
+#Carryover Effect
+
+Chat=mean(U2)-mean(U1);   VChat=sig2u*(1/n1+1/n2);
+Fhat=mean(D1)-mean(D2);   VFhat=sig2d*(1/n1+1/n2);
+Phat=mean(O1)-mean(O2);
+
+Effect=c("Carry","Drug","Period")
+MVUE=c(Chat,Fhat,Phat)
+Vhat=c(VChat,VFhat,VFhat)
+tst=MVUE/sqrt(Vhat)
+pv=2*(1-pt(abs(tst),n1+n2-2))
+lowerCI=MVUE-qt(1-alpha/2,n1+n2-2)*sqrt(Vhat)
+upperCI=MVUE+qt(1-alpha/2,n1+n2-2)*sqrt(Vhat)
+df2=data.frame(Effect,MVUE,Vhat,tst,pv,lowerCI,upperCI)
+return(df2)
+}
+```
+* Effect Estimation for Cmax
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$Cmax,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+```
+* Effect Estimation for Tmax
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$Tmax,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+
+```
+* Effect Estimation for Tmax
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$AUCt,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+```
+* Effect Estimation for AUCinf
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$AUCinf,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+```
+* Effect Estimation for Thalf
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$Thalf,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+```
+* Effect Estimation for Ke
+```{r}
+alpha=0.05
+df_temp=data.frame("Y"=df3$Ke,"Per"=df3$Per,"Sub"=df3$Sub,"Seq"=df3$seq)
+eff(df_temp,alpha)
+```
+## ANOVA
+  Now we create a general function to find the ANOVA for all Pkparameter.
+```{r}
+df=read.csv("C:\\Users\\FLUTE\\Desktop\\Diksha\\Statistics\\Third Sem\\ST 306\\MCP\\Clinical Trials\\BABEData22.csv")
+Diksha=function(Y,Seq,Per,Sub)
+{
+n=length(df$Y)
+SST=(n-1)*var(df$Y)
+df=data.frame(Y,Seq,Per,Sub)
+Y11=df[df$Per==1&df$Seq==1,1];n1=length(Y11)
+Y12=df[df$Per==1&df$Seq==2,1]
+Y21=df[df$Per==2&df$Seq==1,1]
+Y22=df[df$Per==2&df$Seq==2,1];n2=length(Y22)
+df_temp=data.frame(t1=c(Y11,Y12),t2=c(Y21,Y22))
+SSWithin=sum(apply(df_temp,1,var))
+SSBetween=2*sum((apply(df_temp,1,mean)-mean(df$Y))^2) #By using formula
+
+# Now we slite SSbetween.
+#SSBetween=SScarry + SSinter
+U1=Y11+Y21; U2=Y12+Y22;
+Chat=(mean(Y12)+mean(Y22))-(mean(Y11)+mean(Y21));
+SScarry=2*n1*n2/(n1+n2)*Chat^2/4
+SSinter=SSBetween-SScarry
+
+Fhat=(((mean(Y21)-mean(Y11))-(mean(Y22)-mean(Y12)))/2)
+SSdrug=2*n1*n2/(n1+n2)*Fhat^2
+
+Phat=(((mean(Y21)-mean(Y11))-(mean(Y12)-mean(Y22)))/2)
+SSperiod=2*n1*n2/(n1+n2)*Phat^2
+
+SSintra=SSWithin-SSdrug-SSperiod
+source1=c("carry","inter","drug","period","intra","Total")
+SS=c(SScarry,SSinter,SSdrug,SSperiod,SSintra,SST)
+df=c(1,n1+n2-2,1,1,n1+n2-2,2*(n1+n2)-1)
+Msq=SS/df
+Fcal=rep(0,6)
+Fcal[1]=Msq[1]/Msq[2]
+Fcal[2:4]=Msq[2:4]/Msq[5]
+Pval=rep(0,6)
+Pval[1]=1-pf(Fcal[1],df[1],df[2])
+Pval[2:4]=1-pf(Fcal[2:4],df[2:4],df[5])
+return(data.frame("Source"=source1,"Df"=df,"Summofsq"=SS,"Msq"=Msq,"Fcal"=Fcal,"Pvalue"=Pval))
+}
+Diksha("Y"=df$Y,"Seq"=df$Seq,"Per"=df$Per,"Sub"=df$Sub)
+
+```
+* ANOVA for Tmax
+```{r}
+Diksha("Y"=df3$Tmax,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+* ANOVA for Cmax
+
+```{r}
+Diksha("Y"=df3$Cmax,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+* ANOVA for AUCt
+```{r}
+Diksha("Y"=df3$AUCt,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+* ANOVA for AUCinf
+```{r}
+Diksha("Y"=df3$AUCinf,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+* ANOVA for Thaif
+```{r}
+Diksha("Y"=df3$Thalf,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+* ANOVA for Ke
+```{r}
+Diksha("Y"=df3$Ke,"Seq"=df3$seq,"Per"=df3$Per,"Sub"=df3$Sub)
+```
+
+Conclusion : Let alpha=0.05, 
+If p-value is less than alpha then we reject H0 and If p-value is greater than alpha then we fail to reject H0.
